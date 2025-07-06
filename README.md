@@ -1,5 +1,5 @@
 # Website Time Tracker
-A simple Tampermonkey script for tracking of time spendings on different sites (customizable). Created with Claude Sonnet 4.
+A simple Tampermonkey script for tracking of time spending on different sites (customizable). Created with Claude Sonnet 4.
 
 ## Features:
 
