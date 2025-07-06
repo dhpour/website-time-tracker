@@ -47,3 +47,70 @@ A simple Tampermonkey script for tracking of time spendings on different sites (
 - Each website is tracked separately
 
 The script is lightweight, privacy-focused (all data stays local), and provides exactly the hourly, daily, and weekly breakdowns you requested. It will start tracking immediately once installed!
+
+## 🔄 Data Management Features:
+### Export Options:
+
+- 📤 Export JSON: Complete data backup with metadata
+- 📊 Export CSV: Spreadsheet-friendly format for analysis
+- 💾 Create Backup: Local backup stored in browser
+
+### Import Options:
+
+- 📥 Import JSON: Merge data from exported files
+- 🔄 Restore Backup: Restore from local backups (keeps last 5)
+
+## Data Management:
+
+- 📋 View All Data: See all tracked websites and total times
+- 🗑️ Clear All Data: Complete reset with confirmation
+
+## 🎯 How to Use:
+
+1. Access Data Menu: Click the 💾 button in the tracker panel header
+2. Export Data:
+
+    - JSON format preserves all data structure
+    - CSV format for spreadsheet analysis
+    - Automatic filename with date stamp
+
+
+3. Import Data:
+
+    - Merges imported data with existing data
+    - Handles duplicate websites intelligently
+    - Shows success/error notifications
+
+
+4. Backup System:
+
+    - Creates timestamped backups
+    - Automatically manages storage (keeps 5 most recent)
+    - Easy restore with date selection
+
+
+
+## 🛡️ Data Safety Features:
+
+- Smart Merging: Importing data adds to existing data rather than replacing
+- Validation: Checks data format before importing
+- Automatic Backups: Creates backup before major operations
+- Confirmation Dialogs: Prevents accidental data loss
+- Error Handling: Clear error messages for failed operations
+
+## 📊 Export Formats:
+### JSON Export includes:
+
+- All website data
+- Export timestamp
+- Data version
+- Total statistics
+- Complete hour/day/week breakdowns
+
+### CSV Export includes:
+
+- Domain, Date, Hour columns
+- Time data in seconds
+- Easy to analyze in Excel/Google Sheets
+
+The data management system is now production-ready with proper error handling, user feedback, and data safety measures!

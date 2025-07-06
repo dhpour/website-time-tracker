@@ -101,6 +101,151 @@
         saveData(allData);
     }
 
+    // Data export/import functions
+    function exportData() {
+        const data = getData();
+        const exportData = {
+            version: '1.0',
+            exportDate: new Date().toISOString(),
+            data: data,
+            totalSites: Object.keys(data).length,
+            totalTime: Object.values(data).reduce((sum, site) => sum + site.totalTime, 0)
+        };
+        
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `website-time-tracker-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        return exportData;
+    }
+
+    function importData(jsonData) {
+        try {
+            const importData = JSON.parse(jsonData);
+            
+            // Validate data structure
+            if (!importData.data || typeof importData.data !== 'object') {
+                throw new Error('Invalid data format');
+            }
+            
+            // Merge with existing data
+            const currentData = getData();
+            const mergedData = { ...currentData };
+            
+            for (const [domain, siteData] of Object.entries(importData.data)) {
+                if (mergedData[domain]) {
+                    // Merge existing domain data
+                    mergedData[domain].totalTime += siteData.totalTime;
+                    mergedData[domain].sessions = [...(mergedData[domain].sessions || []), ...(siteData.sessions || [])];
+                    
+                    // Merge hourly data
+                    for (const [hour, time] of Object.entries(siteData.hourlyData || {})) {
+                        mergedData[domain].hourlyData[hour] = (mergedData[domain].hourlyData[hour] || 0) + time;
+                    }
+                    
+                    // Merge daily data
+                    for (const [day, time] of Object.entries(siteData.dailyData || {})) {
+                        mergedData[domain].dailyData[day] = (mergedData[domain].dailyData[day] || 0) + time;
+                    }
+                    
+                    // Merge weekly data
+                    for (const [week, time] of Object.entries(siteData.weeklyData || {})) {
+                        mergedData[domain].weeklyData[week] = (mergedData[domain].weeklyData[week] || 0) + time;
+                    }
+                } else {
+                    // New domain
+                    mergedData[domain] = siteData;
+                }
+            }
+            
+            saveData(mergedData);
+            return { success: true, message: `Successfully imported data for ${Object.keys(importData.data).length} websites` };
+            
+        } catch (error) {
+            return { success: false, message: `Import failed: ${error.message}` };
+        }
+    }
+
+    function exportCSV() {
+        const data = getData();
+        const csvRows = [];
+        
+        // Header
+        csvRows.push('Domain,Date,Hour,Daily Time (seconds),Weekly Time (seconds),Total Time (seconds)');
+        
+        // Data rows
+        for (const [domain, siteData] of Object.entries(data)) {
+            // Daily data
+            for (const [date, time] of Object.entries(siteData.dailyData || {})) {
+                const weekKey = getWeekKey(new Date(date));
+                const weeklyTime = siteData.weeklyData[weekKey] || 0;
+                csvRows.push(`${domain},${date},,${time},${weeklyTime},${siteData.totalTime}`);
+            }
+            
+            // Hourly data
+            for (const [hourKey, time] of Object.entries(siteData.hourlyData || {})) {
+                const [date, hour] = hourKey.split('-').slice(-2);
+                const fullDate = hourKey.substring(0, hourKey.lastIndexOf('-'));
+                csvRows.push(`${domain},${fullDate},${hour},${time},,${siteData.totalTime}`);
+            }
+        }
+        
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `website-time-tracker-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function clearAllData() {
+        if (confirm('Are you sure you want to clear all tracking data? This cannot be undone.')) {
+            localStorage.removeItem(STORAGE_KEY);
+            location.reload();
+        }
+    }
+
+    function createBackup() {
+        const data = getData();
+        const backupKey = `${STORAGE_KEY}_backup_${Date.now()}`;
+        localStorage.setItem(backupKey, JSON.stringify(data));
+        
+        // Keep only last 5 backups
+        const backupKeys = Object.keys(localStorage).filter(key => key.startsWith(`${STORAGE_KEY}_backup_`));
+        backupKeys.sort().slice(0, -5).forEach(key => localStorage.removeItem(key));
+        
+        return backupKey;
+    }
+
+    function getBackups() {
+        const backupKeys = Object.keys(localStorage).filter(key => key.startsWith(`${STORAGE_KEY}_backup_`));
+        return backupKeys.map(key => {
+            const timestamp = parseInt(key.split('_').pop());
+            return {
+                key: key,
+                date: new Date(timestamp),
+                name: new Date(timestamp).toLocaleString()
+            };
+        }).sort((a, b) => b.date - a.date);
+    }
+
+    function restoreBackup(backupKey) {
+        const backupData = localStorage.getItem(backupKey);
+        if (backupData) {
+            localStorage.setItem(STORAGE_KEY, backupData);
+            location.reload();
+        }
+    }
+
     // Time tracking functions
     function updateTimeData(timeSpent) {
         const data = getDomainData(currentDomain);
@@ -181,7 +326,10 @@
         `;
         header.innerHTML = `
             <span>Time Tracker - ${currentDomain}</span>
-            <button id="closeTracker" style="background: none; border: none; color: white; cursor: pointer; font-size: 18px;">×</button>
+            <div>
+                <button id="dataMenuBtn" style="background: none; border: none; color: white; cursor: pointer; font-size: 16px; margin-right: 10px;">💾</button>
+                <button id="closeTracker" style="background: none; border: none; color: white; cursor: pointer; font-size: 18px;">×</button>
+            </div>
         `;
 
         const content = document.createElement('div');
@@ -196,10 +344,305 @@
         panel.appendChild(content);
         document.body.appendChild(panel);
 
+        // Create data management dropdown
+        const dataMenu = createDataMenu();
+        panel.appendChild(dataMenu);
+
         // Event listeners
         document.getElementById('closeTracker').onclick = () => {
             panel.style.display = 'none';
         };
+
+        document.getElementById('dataMenuBtn').onclick = () => {
+            const menu = document.getElementById('dataMenu');
+            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        };
+
+        // Close menu when clicking outside
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('dataMenu');
+            const btn = document.getElementById('dataMenuBtn');
+            if (menu && !menu.contains(e.target) && e.target !== btn) {
+                menu.style.display = 'none';
+            }
+        });
+
+        return panel;
+    }
+
+    function createDataMenu() {
+        const menu = document.createElement('div');
+        menu.id = 'dataMenu';
+        menu.style.cssText = `
+            position: absolute;
+            top: 50px;
+            right: 60px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 10001;
+            min-width: 200px;
+            display: none;
+        `;
+
+        const menuItems = [
+            { text: '📤 Export JSON', action: 'export' },
+            { text: '📥 Import JSON', action: 'import' },
+            { text: '📊 Export CSV', action: 'exportCSV' },
+            { text: '💾 Create Backup', action: 'backup' },
+            { text: '🔄 Restore Backup', action: 'restore' },
+            { text: '📋 View All Data', action: 'viewAll' },
+            { text: '🗑️ Clear All Data', action: 'clear' }
+        ];
+
+        menu.innerHTML = menuItems.map(item => `
+            <div class="menu-item" data-action="${item.action}" style="
+                padding: 10px;
+                cursor: pointer;
+                border-bottom: 1px solid #eee;
+                hover: background: #f5f5f5;
+            ">${item.text}</div>
+        `).join('');
+
+        // Add hover effects
+        menu.addEventListener('mouseover', (e) => {
+            if (e.target.classList.contains('menu-item')) {
+                e.target.style.background = '#f5f5f5';
+            }
+        });
+
+        menu.addEventListener('mouseout', (e) => {
+            if (e.target.classList.contains('menu-item')) {
+                e.target.style.background = '';
+            }
+        });
+
+        // Add click handlers
+        menu.addEventListener('click', (e) => {
+            if (e.target.classList.contains('menu-item')) {
+                const action = e.target.dataset.action;
+                handleDataAction(action);
+                menu.style.display = 'none';
+            }
+        });
+
+        return menu;
+    }
+
+    function handleDataAction(action) {
+        switch (action) {
+            case 'export':
+                const exportedData = exportData();
+                showNotification(`Data exported successfully! ${exportedData.totalSites} websites tracked.`);
+                break;
+                
+            case 'import':
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const result = importData(e.target.result);
+                            showNotification(result.message, result.success ? 'success' : 'error');
+                            if (result.success) {
+                                setTimeout(() => location.reload(), 1500);
+                            }
+                        };
+                        reader.readAsText(file);
+                    }
+                };
+                input.click();
+                break;
+                
+            case 'exportCSV':
+                exportCSV();
+                showNotification('CSV data exported successfully!');
+                break;
+                
+            case 'backup':
+                const backupKey = createBackup();
+                showNotification('Backup created successfully!');
+                break;
+                
+            case 'restore':
+                showRestoreDialog();
+                break;
+                
+            case 'viewAll':
+                showAllDataDialog();
+                break;
+                
+            case 'clear':
+                clearAllData();
+                break;
+        }
+    }
+
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: ${type === 'error' ? '#f44336' : type === 'success' ? '#4CAF50' : '#2196F3'};
+            color: white;
+            padding: 12px 24px;
+            border-radius: 4px;
+            z-index: 10002;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        `;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.remove();
+        }, 3000);
+    }
+
+    function showRestoreDialog() {
+        const backups = getBackups();
+        if (backups.length === 0) {
+            showNotification('No backups found.', 'error');
+            return;
+        }
+
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 10002;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+
+        const content = document.createElement('div');
+        content.style.cssText = `
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 400px;
+            width: 90%;
+            max-height: 80%;
+            overflow-y: auto;
+        `;
+
+        content.innerHTML = `
+            <h3>Restore Backup</h3>
+            <p>Select a backup to restore:</p>
+            ${backups.map(backup => `
+                <div style="
+                    padding: 8px;
+                    margin: 5px 0;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    hover: background: #f5f5f5;
+                " onclick="restoreBackup('${backup.key}')">
+                    ${backup.name}
+                </div>
+            `).join('')}
+            <button onclick="this.parentElement.parentElement.remove()" style="
+                margin-top: 15px;
+                padding: 8px 16px;
+                background: #ccc;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            ">Cancel</button>
+        `;
+
+        dialog.appendChild(content);
+        document.body.appendChild(dialog);
+
+        // Close on outside click
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                dialog.remove();
+            }
+        });
+    }
+
+    function showAllDataDialog() {
+        const data = getData();
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 10002;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+
+        const content = document.createElement('div');
+        content.style.cssText = `
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80%;
+            overflow-y: auto;
+        `;
+
+        const totalTime = Object.values(data).reduce((sum, site) => sum + site.totalTime, 0);
+        const siteList = Object.entries(data)
+            .sort(([,a], [,b]) => b.totalTime - a.totalTime)
+            .map(([domain, siteData]) => `
+                <div style="
+                    padding: 10px;
+                    margin: 5px 0;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    display: flex;
+                    justify-content: space-between;
+                ">
+                    <span>${domain}</span>
+                    <span>${formatTime(siteData.totalTime)}</span>
+                </div>
+            `).join('');
+
+        content.innerHTML = `
+            <h3>All Tracked Websites</h3>
+            <p><strong>Total Time Tracked:</strong> ${formatTime(totalTime)}</p>
+            <p><strong>Websites Tracked:</strong> ${Object.keys(data).length}</p>
+            <div style="margin-top: 20px;">
+                ${siteList}
+            </div>
+            <button onclick="this.parentElement.parentElement.remove()" style="
+                margin-top: 15px;
+                padding: 8px 16px;
+                background: #ccc;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            ">Close</button>
+        `;
+
+        dialog.appendChild(content);
+        document.body.appendChild(dialog);
+
+        // Close on outside click
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                dialog.remove();
+            }
+        });
 
         return panel;
     }
